@@ -1,0 +1,33 @@
+{
+    "name": "solver-engine",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "bun run --hot src/index.ts",
+        "start": "bun run src/index.ts",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint .",
+        "lint:fix": "eslint --fix .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "dependencies": {
+        "@fastify/swagger": "^9.8.1",
+        "@fastify/swagger-ui": "^6.1.1",
+        "fastify": "^5.12.3",
+        "fastify-type-provider-zod": "^7.0.0",
+        "winston": "^3.19.0",
+        "zod": "^4.5.4"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/bun": "^1.3.14",
+        "eslint": "^10.10.0",
+        "eslint-config-prettier": "^10.1.8",
+        "globals": "^17.12.0",
+        "prettier": "^3.9.6",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.70.0",
+        "viem": "^2.56.3"
+    }
+}
