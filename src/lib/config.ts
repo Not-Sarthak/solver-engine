@@ -15,6 +15,12 @@ const chainIdsSchema = z
 const envSchema = z.object({
     PORT: portSchema,
     SOLVER_CHAIN_IDS: chainIdsSchema,
+    // the key that signs every fill. on a fork it is anvil's public test key; on mainnet it is the
+    // hot wallet, and it comes from here rather than from source for exactly that reason
+    SOLVER_PRIVATE_KEY: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+    // fork: anvil per chain, inventory written into storage, measurements from real receipts.
+    // live: real rpc, real signer, real balances, measurements from the node's own simulation.
+    EXECUTION_MODE: z.enum(["fork", "live"]),
 
     FORK_PORT: portSchema,
 
@@ -33,6 +39,8 @@ if (!parsed.success) {
 export const {
     PORT,
     SOLVER_CHAIN_IDS,
+    SOLVER_PRIVATE_KEY,
+    EXECUTION_MODE,
     FORK_PORT,
     QUOTE_TTL_MS,
     RISK_BPS,
