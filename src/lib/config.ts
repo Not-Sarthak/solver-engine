@@ -24,6 +24,11 @@ const envSchema = z.object({
 
     FORK_PORT: portSchema,
 
+    DFLOW_API_KEY: z.string().min(1),
+    DFLOW_QUOTE_ENDPOINT: z.url(),
+    JUPITER_API_KEY: z.string().min(1),
+    JUPITER_ULTRASWAP_ENDPOINT: z.url(),
+
     QUOTE_TTL_MS: positiveIntSchema,
     RISK_BPS: bpsSchema,
     SERVICE_BPS: bpsSchema,
@@ -42,6 +47,10 @@ export const {
     SOLVER_PRIVATE_KEY,
     EXECUTION_MODE,
     FORK_PORT,
+    DFLOW_API_KEY,
+    DFLOW_QUOTE_ENDPOINT,
+    JUPITER_API_KEY,
+    JUPITER_ULTRASWAP_ENDPOINT,
     QUOTE_TTL_MS,
     RISK_BPS,
     SERVICE_BPS,

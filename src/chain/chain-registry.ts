@@ -404,6 +404,19 @@ const CHAINS = [
             },
         ],
     },
+    {
+        id: 792703809,
+        name: "solana",
+        vmType: "svm",
+        rpcUrl: "https://api.mainnet-beta.solana.com",
+        wrappedNative: "So11111111111111111111111111111111111111112",
+        hubTokens: [
+            { asset: "WSOL", symbol: "SOL", address: "So11111111111111111111111111111111111111112" },
+            { asset: "USDC", symbol: "USDC", address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
+            { asset: "USDT", symbol: "USDT", address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" },
+        ],
+        amms: [],
+    },
 ] as const satisfies readonly ChainConfig[];
 
 // a chain is a data entry, so the data is checked the way a request body would be: every address
