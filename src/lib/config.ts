@@ -29,6 +29,8 @@ const envSchema = z.object({
     JUPITER_API_KEY: z.string().min(1),
     JUPITER_ULTRASWAP_ENDPOINT: z.url(),
 
+    REDIS_URL: z.url(),
+
     QUOTE_TTL_MS: positiveIntSchema,
     RISK_BPS: bpsSchema,
     SERVICE_BPS: bpsSchema,
@@ -51,6 +53,7 @@ export const {
     DFLOW_QUOTE_ENDPOINT,
     JUPITER_API_KEY,
     JUPITER_ULTRASWAP_ENDPOINT,
+    REDIS_URL,
     QUOTE_TTL_MS,
     RISK_BPS,
     SERVICE_BPS,
