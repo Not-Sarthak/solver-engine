@@ -31,6 +31,17 @@ const envSchema = z.object({
 
     REDIS_URL: z.url(),
 
+    // the sweeper gives back transfers to the solver that match no order. off means they stay
+    // where they landed until an operator looks; the senders listed are the operator's own
+    // funding wallets, whose transfers are inventory rather than deposits.
+    SWEEP_STRAYS: z.enum(["true", "false"]).transform((value) => value === "true"),
+    SWEEP_IGNORE_FROM: z
+        .string()
+        .transform((value) => (value === "" ? [] : value.split(",")))
+        .pipe(z.array(z.string().regex(/^0x[0-9a-fA-F]{40}$/))),
+    // refund attempts per stray before it is left for an operator
+    SWEEP_MAX_ATTEMPTS: positiveIntSchema,
+
     QUOTE_TTL_MS: positiveIntSchema,
     RISK_BPS: bpsSchema,
     SERVICE_BPS: bpsSchema,
@@ -54,6 +65,9 @@ export const {
     JUPITER_API_KEY,
     JUPITER_ULTRASWAP_ENDPOINT,
     REDIS_URL,
+    SWEEP_STRAYS,
+    SWEEP_IGNORE_FROM,
+    SWEEP_MAX_ATTEMPTS,
     QUOTE_TTL_MS,
     RISK_BPS,
     SERVICE_BPS,
