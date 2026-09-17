@@ -31,6 +31,12 @@ const envSchema = z.object({
 
     REDIS_URL: z.url(),
 
+    // the key that opens the routes that show everything: every order, the whole ledger
+    ADMIN_API_KEY: z.string().min(16),
+    // how many quotes and prices one client may ask for per minute. each one is a real route
+    // search and, the first time, a real gas measurement, so an open endpoint is an open bill.
+    QUOTE_RATE_LIMIT_PER_MINUTE: positiveIntSchema,
+
     // the sweeper gives back transfers to the solver that match no order. off means they stay
     // where they landed until an operator looks; the senders listed are the operator's own
     // funding wallets, whose transfers are inventory rather than deposits.
@@ -65,6 +71,8 @@ export const {
     JUPITER_API_KEY,
     JUPITER_ULTRASWAP_ENDPOINT,
     REDIS_URL,
+    ADMIN_API_KEY,
+    QUOTE_RATE_LIMIT_PER_MINUTE,
     SWEEP_STRAYS,
     SWEEP_IGNORE_FROM,
     SWEEP_MAX_ATTEMPTS,
