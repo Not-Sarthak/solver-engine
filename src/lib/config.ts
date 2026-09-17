@@ -49,7 +49,16 @@ const envSchema = z.object({
     SWEEP_MAX_ATTEMPTS: positiveIntSchema,
 
     QUOTE_TTL_MS: positiveIntSchema,
+    // how long after accepting a quote the user has to deposit. shorter than the intent deadline
+    // on purpose: an accepted quote is a price held open, and holding it open longer is an option
+    // the user gets for free.
+    DEPOSIT_WINDOW_MS: positiveIntSchema,
+    // RISK_BPS is the buffer for a wait of this long. a longer wait scales it up, a shorter one
+    // scales it down, with the square root of the ratio, which is how price variance grows with time.
+    RISK_HORIZON_MS: positiveIntSchema,
     RISK_BPS: bpsSchema,
+    // how long a route's measured gas is trusted before it is measured again
+    GAS_CACHE_TTL_MS: positiveIntSchema,
     SERVICE_BPS: bpsSchema,
     APP_BPS: z.string().min(1).regex(/^\d+$/).transform(BigInt),
 });
@@ -77,7 +86,10 @@ export const {
     SWEEP_IGNORE_FROM,
     SWEEP_MAX_ATTEMPTS,
     QUOTE_TTL_MS,
+    DEPOSIT_WINDOW_MS,
+    RISK_HORIZON_MS,
     RISK_BPS,
+    GAS_CACHE_TTL_MS,
     SERVICE_BPS,
     APP_BPS,
 } = parsed.data;
