@@ -405,6 +405,31 @@ const CHAINS = [
         ],
     },
     {
+        id: 999,
+        blockTimeMs: 1_000,
+        name: "hyperevm",
+        vmType: "evm",
+        rpcUrl: "https://rpc.hyperliquid.xyz/evm",
+        wrappedNative: "0x5555555555555555555555555555555555555555",
+        hubTokens: [
+            { asset: "WHYPE", symbol: "WHYPE", address: "0x5555555555555555555555555555555555555555" },
+            { asset: "USDT", symbol: "USD₮0", address: "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb" },
+            { asset: "USDC", symbol: "USDC", address: "0xb88339cb7199b77e23db6e890353e22632ba630f" },
+        ],
+        amms: [
+            {
+                kind: "v3",
+                id: "hyperswap-v3",
+                factory: "0xb1c0fa0b789320044a6f623cfe5ebda9562602e3",
+                deployer: "0xb1c0fa0b789320044a6f623cfe5ebda9562602e3",
+                initCodeHash: HYPERSWAP_V3_HASH,
+                router: "0x4e2960a8cd19b467b82d26d83facb0fae26b094d",
+                routerTakesDeadline: true,
+                feeTiers: [...UNISWAP_V3_TIERS],
+            },
+        ],
+    },
+    {
         id: 792703809,
         name: "solana",
         vmType: "svm",
