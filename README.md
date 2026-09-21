@@ -19,6 +19,90 @@ afterwards. The spread is its revenue, earned by fronting capital and taking the
 repaid. Relay, Across and deBridge work this way. CoW and UniswapX do not, since there the fill and
 the payment are one atomic transaction.
 
+## Example run
+
+1 WETH into USDC on Base against an anvil fork at block 51167991. The user was quoted
+2450.117708 USDC, deposited, and received exactly that amount in transaction `0xef88…d0bc`. The
+swap produced 2454.539844 USDC, so the solver kept 4.42 USDC.
+
+<details>
+<summary><code>POST /quote</code></summary>
+
+```json
+{
+  "orderId": "6e98f3dd-205f-4c39-b553-d6dc66a90df1",
+  "quote": {
+    "amountOut": "2450117708",
+    "expectedProfit": "4418170",
+    "expiresAtMs": 1789125924432,
+    "fees": {
+      "relayerGas": "3966",
+      "relayerService": "1963631",
+      "app": "0",
+      "settlement": "0",
+      "rebalance": "0",
+      "riskBuffer": "2454539"
+    },
+    "route": {
+      "hops": 1,
+      "grossAmountOut": "2454539844",
+      "gasUsed": "268866",
+      "legs": [
+        {
+          "sourceId": "concentrated-liquidity",
+          "poolId": "0x72AB388E2E2F6FaceF59E3C3FA2C4E29011c2D38",
+          "tokenIn": "0x4200000000000000000000000000000000000006",
+          "tokenOut": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+          "amountOut": "2454539844",
+          "latencyMs": 2.286
+        }
+      ]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /orders/6e98f3dd-205f-4c39-b553-d6dc66a90df1/accept</code></summary>
+
+```json
+{
+  "deposit": {
+    "chainId": 8453,
+    "token": "0x4200000000000000000000000000000000000006",
+    "amount": "1000000000000000000",
+    "to": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+  },
+  "jobId": "6e98f3dd-205f-4c39-b553-d6dc66a90df1",
+  "order": { "state": "AWAITING_DEPOSIT", "status": "waiting" }
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /orders/6e98f3dd-205f-4c39-b553-d6dc66a90df1</code></summary>
+
+```json
+{
+  "status": "success",
+  "state": "SETTLED",
+  "failReason": null,
+  "failDetail": null,
+  "depositTx": "0xc8ce13560a22a469249222b3dfb1d7989d834b5b858c3ed95ea4b70c7acc1df1",
+  "fillTx": "0xef8841cd7e29d44a587406edb1c72112ceb670a005a4f5fce77170d7b6a4d0bc",
+  "history": [
+    "RECEIVED", "QUOTING", "QUOTED", "ACCEPTED", "AWAITING_DEPOSIT", "DEPOSIT_CONFIRMED",
+    "FILLING", "FILLED", "SETTLING", "SETTLEMENT_FAILED", "SETTLING", "SETTLEMENT_FAILED",
+    "SETTLING", "SETTLED"
+  ]
+}
+```
+
+</details>
+
 ## How it works
 
 ### Chains and AMMs
@@ -70,6 +154,24 @@ Orders, intents, quotes and inventory are written to Redis before any caller see
 back on start, next to the BullMQ jobs, so a restart resumes every order. An order that was
 mid-transaction is checked against the chain: a payout or refund found there is carried on from;
 one that cannot be found puts the order in `NEEDS_REVIEW`.
+
+## Performance
+
+Measured on Base against public RPC endpoints; the numbers are recorded in the source comments
+next to the constants they set.
+
+| Optimization                        | What it does                                                                                                                                                                                            | Before                                                           | After                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------ |
+| Gas price cache                     | Every quote fetched the gas price from the RPC. It is now fetched once per chain and refreshed when a new block arrives.                                                                                | quote latency 173 ms, of which the RPC round trip was p50 177 ms | quote latency 1.44 ms                                        |
+| Tick lookup                         | A Uniswap V3 swap walks through price ranges ("ticks"). Each step used to scan the whole tick list to find the next one; now the starting tick is found by binary search and a cursor moves from there. | 3.0 ms per swap (20M USDC through 1454 ticks)                    | quote latency 0.87 ms, together with the next row            |
+| Validation moved off the hot path   | Pool data was validated on every swap. It is now validated once, when the pool is loaded from the chain.                                                                                                | 97.9 µs per swap, 43% of swap time                               | 1.0 µs per swap                                              |
+| Measure gas only for the top routes | Gas is measured by executing a route on a fork. Every candidate route used to be executed; now routes are ranked with our own AMM math and only the top 3 are executed.                                 | 14.5 s per quote                                                 | ~1.4 s per measured route                                    |
+| Negative caching                    | A route that failed to execute was retried on every quote. Failures are now cached like successes, until the cache expires or the pool changes.                                                         | ~2.5 s per failing route per quote                               | 0                                                            |
+| Load only the deepest pools         | A pair can have a dozen pools across AMMs and fee tiers. Only the 3 with the most liquidity are loaded in full; the rest are tracked by their liquidity so they can be promoted later.                  | every pool loaded with ticks                                     | 3 pools give the same output as QuoterV2; 2 pools lose 4 bps |
+| Tick window                         | V3 tick data is read in 256-tick words around the current price. Reading ±1 word left large swaps with too little data; ±8 words is exact up to 200M USDC.                                              | ±1 word: output overstated by 7315 bps at 200M USDC              | exact to 200M USDC; load time 1094 ms vs 779 ms              |
+| Incremental pool state              | Pool state was refreshed by reloading it from the chain. Now each block's `Swap`, `Mint`, `Burn` and `Sync` events are applied to the state already in memory.                                          | ~1 s per V3 pool per refresh                                     | one `eth_getLogs` per chain per block                        |
+| Multicall batch size                | RPC reads are batched with Multicall3. Batch size and concurrency were measured against the public endpoint.                                                                                            | batch of 40: 4.70 ms per call                                    | batch of 400, 4 in flight: 1.39 ms per call                  |
+| Multi-hop encoding                  | A route through two pools was sent as two router calls, and the second call received nothing to swap. It is now encoded as one `exactInput` call with a packed path.                                    | 1 of 3 multi-hop routes executable                               | 3 of 3                                                       |
 
 ## Endpoints
 
