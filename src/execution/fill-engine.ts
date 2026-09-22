@@ -62,6 +62,8 @@ type FillEngineParams = {
     // inside the risk buffer, but a route that failed to execute is remembered as failing, and
     // this is how long that verdict can stand before it is checked again
     gasCacheTtlMs: number;
+    // runs before every transaction leaves; throws when this process may no longer sign
+    beforeSend(): Promise<void>;
     now: () => number;
 };
 
@@ -86,7 +88,16 @@ function classify(message: string): FailureReason {
 // every number here comes from a transaction that actually ran: gasUsed off the receipt, amountOut
 // off the balance delta. a dry run is the same execution wrapped in an anvil snapshot and rolled
 // back, so pricing sees what the fill will see rather than an estimate of it.
-export function createFillEngine({ chain, publicClient, walletClient, testClient, signer, gasCacheTtlMs, now }: FillEngineParams): FillEngine {
+export function createFillEngine({
+    chain,
+    publicClient,
+    walletClient,
+    testClient,
+    signer,
+    gasCacheTtlMs,
+    beforeSend,
+    now,
+}: FillEngineParams): FillEngine {
     const owner = signer.address;
     const approved = new Set<string>();
     // negatives are cached too: a route that cannot execute will not start working, and retrying it
@@ -213,6 +224,7 @@ export function createFillEngine({ chain, publicClient, walletClient, testClient
         const allowance = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [owner, spender] });
 
         if (allowance < amount) {
+            await beforeSend();
             const hash = await walletClient.writeContract({
                 address: token,
                 abi: erc20Abi,
@@ -236,6 +248,7 @@ export function createFillEngine({ chain, publicClient, walletClient, testClient
         to: Address,
         data: `0x${string}`,
     ): Promise<{ ok: true; gasUsed: bigint; txHash: Hash } | { ok: false; reason: FailureReason; detail: string }> {
+        await beforeSend();
         const txHash = await walletClient.sendTransaction({ to, data, account: signer, chain: walletClient.chain });
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 

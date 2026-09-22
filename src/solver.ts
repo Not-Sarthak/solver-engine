@@ -50,6 +50,8 @@ type SolverParams = {
     };
     // transfers to the solver that match no order are given back, unless they came from here
     sweep: { enabled: boolean; ignoreFrom: readonly Address[]; maxAttempts: number };
+    // the check every transaction makes before it is sent
+    beforeSend(): Promise<void>;
     now: () => number;
 };
 
@@ -68,6 +70,7 @@ export function createSolver({
     appBps,
     records,
     sweep,
+    beforeSend,
     now,
 }: SolverParams) {
     const environments = new Map(
@@ -94,6 +97,7 @@ export function createSolver({
                     testClient: runtime.fill!.testClient,
                     signer: runtime.fill!.signer,
                     gasCacheTtlMs,
+                    beforeSend,
                     now,
                 }),
             ]),

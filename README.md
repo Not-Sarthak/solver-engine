@@ -162,7 +162,14 @@ One instance writes; any number can read. Every instance serves `/price`, `/swap
 compare-and-set on the server) runs the queue worker, the block pollers and the sweepers, and
 answers `/quote` and `/orders/:id/accept`; the others answer those with `503 NOT_LEADER`. An
 instance that loses the lease exits rather than risk signing alongside the new holder, and the
-new holder picks up its active jobs through BullMQ's stall detection. A single writer is the
+new holder picks up its active jobs through BullMQ's stall detection.
+
+A lease on its own does not rule out two writers: a holder that stalls (a long GC pause, a blocked
+event loop) can wake after its lease expired and another instance took over, and carry on. So
+each acquisition takes a number from a counter that only increases, the number is part of the
+lease value, and every write is fenced by it: a transaction is sent only after re-reading the
+lease and finding this instance's number, and a record write is a Redis script that checks the
+lease and writes in one step, so a stale holder's write is refused by the store itself. A single writer is the
 correct shape because the account has one nonce and the ledger has one truth; reads scale by
 adding instances behind a load balancer that retries a 503 on the writer.
 

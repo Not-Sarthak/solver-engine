@@ -1,4 +1,5 @@
 import type Redis from "ioredis";
+import type { Fence } from "../lib/leader";
 
 // one hash per collection, one field per record. redis is already the durable boundary here
 // because bullmq lives in it: a job that survives a restart has to find its order in the same
@@ -22,12 +23,25 @@ function deserialize<T>(text: string): T {
     ) as T;
 }
 
-export function createRecords<T>(redis: Redis, collection: string): Records<T> {
+// a write lands only if the lease still names the writer, checked and written in one step on the
+// server. a process that lost the lease without noticing gets an error, not a silent overwrite.
+const FENCED_HSET = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("hset", KEYS[2], ARGV[2], ARGV[3])
+end
+return -1`;
+
+export function createRecords<T>(redis: Redis, collection: string, fence: () => Fence): Records<T> {
     const key = `solver:${collection}`;
 
     return {
         async save(id, value) {
-            await redis.hset(key, id, serialize(value));
+            const lease = fence();
+            const written = await redis.eval(FENCED_HSET, 2, lease.key, key, lease.value, id, serialize(value));
+
+            if (written === -1) {
+                throw new Error(`Write to ${collection} refused: the lease no longer names this instance`);
+            }
         },
 
         async loadAll() {

@@ -104,30 +104,6 @@ async function buildServer() {
         privateKey: SOLVER_PRIVATE_KEY as `0x${string}`,
     });
 
-    const solver = createSolver({
-        chains: runtimes,
-        holdings,
-        depositAddress: signer,
-        ttlMs: QUOTE_TTL_MS,
-        depositWindowMs: DEPOSIT_WINDOW_MS,
-        riskHorizonMs: RISK_HORIZON_MS,
-        riskBps: RISK_BPS,
-        gasCacheTtlMs: GAS_CACHE_TTL_MS,
-        serviceBps: SERVICE_BPS,
-        appBps: APP_BPS,
-        records: {
-            orders: createRecords(redis, "orders"),
-            intents: createRecords(redis, "intents"),
-            quotes: createRecords(redis, "quotes"),
-            strays: createRecords(redis, "strays"),
-            sweepCursors: createRecords(redis, "sweep-cursors"),
-            balances: createRecords(redis, "balances"),
-            reservations: createRecords(redis, "reservations"),
-        },
-        sweep: { enabled: SWEEP_STRAYS, ignoreFrom: SWEEP_IGNORE_FROM as Address[], maxAttempts: SWEEP_MAX_ATTEMPTS },
-        now,
-    });
-
     // the http server is up before leadership: any instance prices. writes and sends start only
     // once this instance holds the lease, and stop for good the moment it loses it: an instance
     // that kept signing after another took over would be two writers, which the lease exists to
@@ -141,6 +117,31 @@ async function buildServer() {
             logger.error("Stopping: no longer the leader");
             process.exit(1);
         },
+    });
+
+    const solver = createSolver({
+        chains: runtimes,
+        holdings,
+        depositAddress: signer,
+        ttlMs: QUOTE_TTL_MS,
+        depositWindowMs: DEPOSIT_WINDOW_MS,
+        riskHorizonMs: RISK_HORIZON_MS,
+        riskBps: RISK_BPS,
+        gasCacheTtlMs: GAS_CACHE_TTL_MS,
+        serviceBps: SERVICE_BPS,
+        appBps: APP_BPS,
+        records: {
+            orders: createRecords(redis, "orders", lease.fence),
+            intents: createRecords(redis, "intents", lease.fence),
+            quotes: createRecords(redis, "quotes", lease.fence),
+            strays: createRecords(redis, "strays", lease.fence),
+            sweepCursors: createRecords(redis, "sweep-cursors", lease.fence),
+            balances: createRecords(redis, "balances", lease.fence),
+            reservations: createRecords(redis, "reservations", lease.fence),
+        },
+        sweep: { enabled: SWEEP_STRAYS, ignoreFrom: SWEEP_IGNORE_FROM as Address[], maxAttempts: SWEEP_MAX_ATTEMPTS },
+        beforeSend: () => lease.assertLeading(),
+        now,
     });
 
     const fills = createOrderQueue();
