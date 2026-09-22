@@ -184,6 +184,23 @@ next to the constants they set.
 | Multicall batch size                | RPC reads are batched with Multicall3. Batch size and concurrency were measured against the public endpoint.                                                                                            | batch of 40: 4.70 ms per call                                    | batch of 400, 4 in flight: 1.39 ms per call                  |
 | Multi-hop encoding                  | A route through two pools was sent as two router calls, and the second call received nothing to swap. It is now encoded as one `exactInput` call with a packed path.                                    | 1 of 3 multi-hop routes executable                               | 3 of 3                                                       |
 
+### Load
+
+`POST /price` for 1 WETH into USDC on Base, served by one instance on a fork with the pair already
+loaded, measured with autocannon for 20 s per row on an Apple M-series laptop. The first request
+for a pair is not in these numbers: it loads the pools and measures gas on the fork, and took
+14.3 s.
+
+| Connections | Requests/s | p50   | p99   | Max   |
+| ----------- | ---------- | ----- | ----- | ----- |
+| 1           | 6,963      | <1 ms | <1 ms | 3 ms  |
+| 10          | 7,330      | 1 ms  | 2 ms  | 28 ms |
+| 50          | 7,221      | 6 ms  | 10 ms | 34 ms |
+
+Throughput is flat from 1 to 50 connections because a warm price is CPU-bound in one process:
+the pool state is in memory and gas for the route is cached. Latency at 50 connections is queueing
+on that one core.
+
 ## Endpoints
 
 | Method | Path                 | Purpose                                                           |
