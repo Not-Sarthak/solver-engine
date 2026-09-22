@@ -14,6 +14,7 @@ import {
     GAS_CACHE_TTL_MS,
     SERVICE_BPS,
     REDIS_URL,
+    LEADER_LEASE_MS,
     ADMIN_API_KEY,
     QUOTE_RATE_LIMIT_PER_MINUTE,
     SOLVER_CHAIN_IDS,
@@ -26,6 +27,8 @@ import { logger } from "./lib/logger";
 import { chainRegistry } from "./chain/chain-registry";
 import { startChainRuntimes } from "./chain/runtime";
 import Redis from "ioredis";
+import { hostname } from "node:os";
+import { createLeaderLease } from "./lib/leader";
 import type { Address } from "viem";
 import { createOrderQueue, createOrderWorker } from "./execution/fill-queue";
 import { createRecords } from "./orders/records";
@@ -125,12 +128,52 @@ async function buildServer() {
         now,
     });
 
-    await solver.restore();
+    // the http server is up before leadership: any instance prices. writes and sends start only
+    // once this instance holds the lease, and stop for good the moment it loses it: an instance
+    // that kept signing after another took over would be two writers, which the lease exists to
+    // rule out. exiting hands the queue's active jobs to the new holder through bullmq's stall check.
+    const lease = createLeaderLease({
+        redis: new Redis(REDIS_URL),
+        key: "solver:leader",
+        ttlMs: LEADER_LEASE_MS,
+        holder: `${hostname()}:${process.pid}`,
+        onLost: () => {
+            logger.error("Stopping: no longer the leader");
+            process.exit(1);
+        },
+    });
 
     const fills = createOrderQueue();
+    // what leadership starts, and what shutdown has to stop; registered before listening because
+    // fastify refuses hooks after that
+    let worker: ReturnType<typeof createOrderWorker> | null = null;
+    let pollers: ReturnType<typeof setInterval>[] = [];
+
+    app.addHook("onClose", async () => {
+        pollers.forEach((interval) => clearInterval(interval));
+        await worker?.close();
+        await fills.close();
+        await lease.release();
+        redis.disconnect();
+        stop();
+    });
+
+    await app.register(
+        createSolverRoutes(solver, now, fills, {
+            adminApiKey: ADMIN_API_KEY,
+            quotesPerMinute: QUOTE_RATE_LIMIT_PER_MINUTE,
+            isLeader: lease.isLeader,
+        }),
+    );
+    await app.listen({ port: PORT });
+    logger.info("Server Started: ", { port: PORT, leader: false });
+
+    await lease.waitForLeadership();
+    await solver.restore();
+
     // the worker runs in this process because there is one solver. splitting it out is a deployment
     // decision, not a code one: the queue is already the boundary.
-    const worker = createOrderWorker({
+    worker = createOrderWorker({
         awaitDeposit: (orderId) => solver.awaitDeposit(orderId),
         execute: (orderId) => solver.executeOrder(orderId),
         settle: (orderId) => solver.settleOrder(orderId),
@@ -141,7 +184,7 @@ async function buildServer() {
     // every evm chain is polled at its own block interval, and each new block replays the loaded
     // pools' events so the next quote reads the state that exists, not the state at boot. a poll
     // that fails is logged and the next one runs; the solver keeps quoting from the last good block.
-    const pollers = runtimes
+    pollers = runtimes
         .filter((runtime) => runtime.client !== null)
         .map((runtime) => {
             const chain = chainRegistry.get(runtime.chainId);
@@ -166,21 +209,19 @@ async function buildServer() {
             return interval;
         });
 
-    await app.register(createSolverRoutes(solver, now, fills, { adminApiKey: ADMIN_API_KEY, quotesPerMinute: QUOTE_RATE_LIMIT_PER_MINUTE }));
-
-    app.addHook("onClose", async () => {
-        pollers.forEach((interval) => clearInterval(interval));
-        await worker.close();
-        await fills.close();
-        redis.disconnect();
-        stop();
-    });
+    logger.info("Leading: ", { port: PORT, holder: `${hostname()}:${process.pid}` });
 
     return app;
 }
 
 if (import.meta.main) {
     const app = await buildServer();
-    await app.listen({ port: PORT });
-    logger.info("Server Started: ", { port: PORT });
+
+    // a stop signal releases the lease on the way out, so the next instance leads at once instead
+    // of waiting for the lease to expire
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+        process.once(signal, () => {
+            app.close().then(() => process.exit(0));
+        });
+    }
 }

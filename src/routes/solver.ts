@@ -137,7 +137,7 @@ function presentOrder(order: Order) {
     };
 }
 
-type RouteAccess = { adminApiKey: string; quotesPerMinute: number };
+type RouteAccess = { adminApiKey: string; quotesPerMinute: number; isLeader(): boolean };
 
 // what @fastify/rate-limit answers with, declared so the serializer knows the shape
 const throttledSchema = z.object({ statusCode: z.number(), error: z.string(), message: z.string() });
@@ -175,6 +175,16 @@ export function createSolverRoutes(
 
     // pricing does real work per call, so it is metered per client
     const metered = { rateLimit: { max: access.quotesPerMinute, timeWindow: "1 minute" } };
+
+    // a quote is a promise and an accept is an order: both are writes, and only the instance
+    // holding the writer lease makes them. any instance can price.
+    const leaderOnly = async (_request: FastifyRequest, reply: FastifyReply) => {
+        if (!access.isLeader()) {
+            await reply.status(503).send({ failReason: "NOT_LEADER" });
+
+            return reply;
+        }
+    };
 
     return async (app) => {
         await app.register(rateLimit, { global: false });
@@ -214,6 +224,7 @@ export function createSolverRoutes(
             "/quote",
             {
                 config: metered,
+                preHandler: leaderOnly,
                 schema: {
                     summary: "Executable quote with a ttl, and the order it belongs to",
                     tags: ["solver"],
@@ -233,6 +244,7 @@ export function createSolverRoutes(
                         }),
                         422: z.object({ failReason: z.string() }),
                         429: throttledSchema,
+                        503: z.object({ failReason: z.string() }),
                     },
                 },
             },
@@ -268,6 +280,7 @@ export function createSolverRoutes(
         app.post(
             "/orders/:orderId/accept",
             {
+                preHandler: leaderOnly,
                 schema: {
                     summary: "Accept a quote, get the deposit instructions, and queue the order",
                     tags: ["solver"],
@@ -279,6 +292,7 @@ export function createSolverRoutes(
                             jobId: z.string().nullable(),
                         }),
                         409: z.object({ failReason: z.string() }),
+                        503: z.object({ failReason: z.string() }),
                     },
                 },
             },

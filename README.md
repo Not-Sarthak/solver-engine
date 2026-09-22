@@ -155,6 +155,17 @@ back on start, next to the BullMQ jobs, so a restart resumes every order. An ord
 mid-transaction is checked against the chain: a payout or refund found there is carried on from;
 one that cannot be found puts the order in `NEEDS_REVIEW`.
 
+### Scaling
+
+One instance writes; any number can read. Every instance serves `/price`, `/swap-sources` and
+`/health`. Only the holder of a Redis lease (`LEADER_LEASE_MS`, renewed three times per period,
+compare-and-set on the server) runs the queue worker, the block pollers and the sweepers, and
+answers `/quote` and `/orders/:id/accept`; the others answer those with `503 NOT_LEADER`. An
+instance that loses the lease exits rather than risk signing alongside the new holder, and the
+new holder picks up its active jobs through BullMQ's stall detection. A single writer is the
+correct shape because the account has one nonce and the ledger has one truth; reads scale by
+adding instances behind a load balancer that retries a 503 on the writer.
+
 ## Performance
 
 Measured on Base against public RPC endpoints; the numbers are recorded in the source comments

@@ -30,6 +30,9 @@ const envSchema = z.object({
     JUPITER_ULTRASWAP_ENDPOINT: z.url(),
 
     REDIS_URL: z.url(),
+    // how long the writer lease lasts without renewal. one instance holds it and does every write
+    // and every send; another waits and takes over within this long of the holder going quiet.
+    LEADER_LEASE_MS: positiveIntSchema,
 
     // the key that opens the routes that show everything: every order, the whole ledger
     ADMIN_API_KEY: z.string().min(16),
@@ -80,6 +83,7 @@ export const {
     JUPITER_API_KEY,
     JUPITER_ULTRASWAP_ENDPOINT,
     REDIS_URL,
+    LEADER_LEASE_MS,
     ADMIN_API_KEY,
     QUOTE_RATE_LIMIT_PER_MINUTE,
     SWEEP_STRAYS,
